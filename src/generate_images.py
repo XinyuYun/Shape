@@ -5,12 +5,202 @@ import copy
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-from commons import *
+import random
+
 
 SMALL_SIZE = 0
 BIG_SIZE = 1
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+####
+
+class Point(object):
+    def __init__(self, *coordinate):
+        coordinate = coordinate[0]
+        self.x = float(coordinate[0])
+        self.y = float(coordinate[1])
+
+
+class FuzzySet(object):
+    def __init__(self, name):
+        self.name = name
+
+
+class Triangle(FuzzySet):
+    """
+           _
+          / \
+         / | \
+        /  |  \
+       /   |   \
+     _/    |    \_
+      |    |    |
+      a    b    c
+    """
+    def __init__(self, name, *points):
+        super(Triangle, self).__init__(name)
+        self.a = Point(points[0])
+        self.b = Point(points[1])
+        self.c = Point(points[2])
+        assert self.a.y == self.c.y
+        assert self.a.x < self.b.x
+        assert self.b.x < self.c.x
+        self.kab = (self.b.y - self.a.y) / (self.b.x - self.a.x)
+        self.kbc = (self.c.y - self.b.y) / (self.c.x - self.b.x)
+
+    def membership(self, x):
+        x = float(x)
+        if x < self.a.x:
+            return 0
+        elif x < self.b.x:
+            return self.kab * (x - self.a.x) + self.a.y
+        elif x < self.c.x:
+            return self.kbc * (x - self.b.x) + self.b.y
+        else:
+            return 0
+
+
+class Trapezoid(FuzzySet):
+    """
+           _____
+          /     \
+         /|     |\
+        / |     | \
+       /  |     |  \
+     _/   |     |   \_
+      |   |     |   |
+      a   b     c   d
+    """
+    def __init__(self, name, *points):
+        super(Trapezoid, self).__init__(name)
+        self.a = Point(points[0])
+        self.b = Point(points[1])
+        self.c = Point(points[2])
+        self.d = Point(points[3])
+        assert self.a.y == self.d.y
+        assert self.b.y == self.c.y
+        assert self.a.x < self.b.x
+        assert self.b.x < self.c.x
+        assert self.c.x < self.d.x
+        self.kab = (self.b.y - self.a.y) / (self.b.x - self.a.x)
+        self.kcd = (self.d.y - self.c.y) / (self.d.x - self.c.x)
+
+    def membership(self, x):
+        x = float(x)
+        if x < self.a.x:
+            return 0
+        elif x < self.b.x:
+            return self.kab * (x - self.a.x) + self.a.y
+        elif x < self.c.x:
+            return self.b.y
+        elif x < self.d.x:
+            return self.kcd * (x - self.c.x) + self.c.y
+        else:
+            return 0
+
+
+class LeftSkewTrapezoid(FuzzySet):
+    """
+       _____
+      |     \
+      |     |\
+      |     | \
+      |     |  \
+     _|     |   \_
+      |     |   |
+      a     b   c
+    """
+    def __init__(self, name, *points):
+        super(LeftSkewTrapezoid, self).__init__(name)
+        self.a = Point(points[0])  # lower point
+        self.b = Point(points[1])
+        self.c = Point(points[2])
+        assert self.a.y == self.c.y
+        assert self.a.x < self.b.x
+        assert self.b.x < self.c.x
+        self.kbc = (self.c.y - self.b.y) / (self.c.x - self.b.x)
+
+    def membership(self, x):
+        x = float(x)
+        if x < self.a.x:
+            return 0
+        elif x < self.b.x:
+            return self.b.y
+        elif x < self.c.x:
+            return self.kbc * (x - self.b.x) + self.b.y
+        else:
+            return 0
+
+
+class RightSkewTrapezoid(FuzzySet):
+    """
+           _____
+          /     |
+         /|     |
+        / |     |
+       /  |     |
+     _/   |     |_
+      |   |     |
+      a   b     c
+    """
+    def __init__(self, name, *points):
+        super(RightSkewTrapezoid, self).__init__(name)
+        self.a = Point(points[0])
+        self.b = Point(points[1])
+        self.c = Point(points[2])  # lower point
+        assert self.a.y == self.c.y
+        assert self.a.x < self.b.x
+        assert self.b.x < self.c.x
+        self.kab = (self.b.y - self.a.y) / (self.b.x - self.a.x)
+
+    def membership(self, x):
+        x = float(x)
+        if x < self.a.x:
+            return 0
+        elif x < self.b.x:
+            return self.kab * (x - self.a.x) + self.a.y
+        elif x < self.c.x:
+            return self.b.y
+        else:
+            return 0
+####
+shape_list = ['Circle', 'Ellipse', 'Triangle', 'Square', 'Rectangle']
+
+feature_list = [
+    'Thinness',
+    'Extent',
+    'Corners'
+]
+
+fset_routes = {
+    'TRI': Triangle,
+    'TPZ': Trapezoid,
+    'LST': LeftSkewTrapezoid,
+    'RST': RightSkewTrapezoid
+}
+
+devel_image_dir = '/Users/dev/Shape/data/'
+train_image_dir = '/Users/dev/Shape/data/'
+train_feature_dir = '/Users/dev/Shape/data/'
+test_image_dir = '/Users/dev/Shape/data/'
+sketch_image_dir = '/Users/dev/Shape/data/sketch_image'
+
+
+class RandomDegree(object):
+    def __init__(self):
+        self.counter = 0
+        self.sequence = list(range(360))
+        random.shuffle(self.sequence)
+
+    def next(self):
+        val = self.sequence[self.counter]
+        self.counter += 1
+        if self.counter == len(self.sequence):
+            random.shuffle(self.sequence)
+            self.counter = 0
+        return val
+
+####
 
 
 def create_img():
@@ -137,10 +327,10 @@ def draw_many(shape, num_per_set, save_path):
         factor = random.uniform(0.1, 0.2)
         degree = rd.next()
         count += 1
-        print 'Drawing #{0} {1} with size = {2}, factor = {3}, degree = {4}'.format(count, shape, size, factor, degree)
+        print('Drawing #{0} {1} with size = {2}, factor = {3}, degree = {4}'.format(count, shape, size, factor, degree))
         img = draw_one(shape, size, factor, degree)
         filename = '{0:04d}_{1}.png'.format(count, shape)
-        filepath = os.path.join(save_path+'\\'+shape, filename)
+        filepath = os.path.join(save_path, filename)
         cv2.imwrite(filepath, img)
 
 
@@ -161,4 +351,4 @@ if __name__ == '__main__':
     random.seed(time.time())
     global rd
     rd = RandomDegree()
-    generate_data(2000)
+    generate_data(2)
